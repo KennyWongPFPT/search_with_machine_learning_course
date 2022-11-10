@@ -11,7 +11,7 @@ from urllib.parse import urljoin
 import pandas as pd
 import fileinput
 import logging
-
+import fasttext
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -186,8 +186,11 @@ def create_query(user_query, click_prior_query, filters, sort="_score", sortDir=
     return query_obj
 
 
-def search(client, user_query, index="bbuy_products", sort="_score", sortDir="desc"):
+def search(client, user_query, model, index="bbuy_products", sort="_score", sortDir="desc"):
     #### W3: classify the query
+    classification = model.predict(user_query)
+    print("query=(" + user_query + ") classification=" + classification[0][0])
+
     #### W3: create filters and boosts
     # Note: you may also want to modify the `create_query` method above
     query_obj = create_query(user_query, click_prior_query=None, filters=None, sort=sort, sortDir=sortDir, source=["name", "shortDescription"])
@@ -238,6 +241,10 @@ if __name__ == "__main__":
         ssl_show_warn=False,
 
     )
+
+    # shameless hard-coded path...
+    query_model = fasttext.load_model("/workspace/datasets/fasttext/week3_model.bin")
+
     index_name = args.index
     query_prompt = "\nEnter your query (type 'Exit' to exit or hit ctrl-c):"
     print(query_prompt)
@@ -245,7 +252,7 @@ if __name__ == "__main__":
         query = line.rstrip()
         if query == "Exit":
             break
-        search(client=opensearch, user_query=query, index=index_name)
+        search(client=opensearch, user_query=query, model=query_model, index=index_name)
 
         print(query_prompt)
 
