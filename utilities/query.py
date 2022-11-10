@@ -188,12 +188,22 @@ def create_query(user_query, click_prior_query, filters, sort="_score", sortDir=
 
 def search(client, user_query, model, index="bbuy_products", sort="_score", sortDir="desc"):
     #### W3: classify the query
-    classification = model.predict(user_query)
-    print("query=(" + user_query + ") classification=" + classification[0][0])
+    classification = model.predict(user_query, threshold=0.5)
+    if classification[0]:
+        print("query=(" + user_query + ") classification=" + classification[0][0])
 
     #### W3: create filters and boosts
+    classification_filter = None
+    if classification[0]:
+        category = classification[0][0].replace("__label__", "")
+        classification_filter = {
+            "match": {
+                "categoryLeaf": category
+            }
+        }
+
     # Note: you may also want to modify the `create_query` method above
-    query_obj = create_query(user_query, click_prior_query=None, filters=None, sort=sort, sortDir=sortDir, source=["name", "shortDescription"])
+    query_obj = create_query(user_query, click_prior_query=None, filters=classification_filter, sort=sort, sortDir=sortDir, source=["name", "shortDescription"])
     logging.info(query_obj)
     response = client.search(query_obj, index=index)
     if response and response['hits']['hits'] and len(response['hits']['hits']) > 0:
