@@ -63,6 +63,21 @@ for index, row in queries_df.iterrows():
     row['query'] = ' '.join(normalized_query_words)
 
 # IMPLEMENT ME: Roll up categories to ancestors to satisfy the minimum number of queries per category.
+while True:
+    cat_counts_df = queries_df.groupby('category').size().reset_index(name='count')
+    cat_counts_below_df = cat_counts_df[cat_counts_df['count'] < min_queries]
+    print('cat_counts_below_df len=' + str(len(cat_counts_below_df)))
+    if len(cat_counts_below_df) > 0:
+        for index, row in cat_counts_below_df.iterrows():
+            cat = row['category']
+            # find parent of cat
+            cat_parent_df = parents_df[parents_df['category'] == cat]
+            if len(cat_parent_df) > 0:
+                parent_cat = cat_parent_df['parent'].iloc[0]
+                # UPDATE queries_df SET category = parent_cat WHERE category = cat
+                queries_df.loc[queries_df['category'] == cat, 'category'] = parent_cat
+    else:
+        break
 
 # Create labels in fastText format.
 queries_df['label'] = '__label__' + queries_df['category']
