@@ -13,6 +13,8 @@ import fileinput
 import logging
 import fasttext
 
+from sentence_transformers import SentenceTransformer
+
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 logging.basicConfig(format='%(levelname)s:%(message)s')
@@ -47,6 +49,22 @@ def create_prior_queries(doc_ids, doc_id_weights,
                 pass  # nothing to do in this case, it just means we can't find priors for this doc
     return click_prior_query
 
+model = SentenceTransformer('all-MiniLM-L6-v2')
+print(model)
+
+def create_vector_query(query, result_count):
+    encoded_query = model.encode([query])[0]
+    return {
+        "size": result_count,
+        "query": {
+            "knn": {
+                "embeddings": {
+                    "vector": encoded_query,
+                    "k": result_count
+                }
+            }
+        }
+    }
 
 # Hardcoded query here.  Better to use search templates or other query config.
 def create_query(user_query, click_prior_query, filters, sort="_score", sortDir="desc", size=10, source=None):
@@ -186,7 +204,7 @@ def create_query(user_query, click_prior_query, filters, sort="_score", sortDir=
     return query_obj
 
 
-def search(client, user_query, model, index="bbuy_products", sort="_score", sortDir="desc"):
+def search(client, user_query, model, index="bbuy_products", sort="_score", sortDir="desc", vector=False):
     #### W3: classify the query
     classification = model.predict(user_query, threshold=0.5)
     if classification[0]:
@@ -203,7 +221,12 @@ def search(client, user_query, model, index="bbuy_products", sort="_score", sort
         }
 
     # Note: you may also want to modify the `create_query` method above
-    query_obj = create_query(user_query, click_prior_query=None, filters=classification_filter, sort=sort, sortDir=sortDir, source=["name", "shortDescription"])
+    if vector:
+        query_obj = create_vector_query(user_query, result_count=50)
+        print("vector query: " + str(query_obj))
+    else:
+        query_obj = create_query(user_query, click_prior_query=None, filters=classification_filter, sort=sort, sortDir=sortDir, source=["name", "shortDescription"])
+
     logging.info(query_obj)
     response = client.search(query_obj, index=index)
     if response and response['hits']['hits'] and len(response['hits']['hits']) > 0:
@@ -225,6 +248,8 @@ if __name__ == "__main__":
                          help='The OpenSearch port')
     general.add_argument('--user',
                          help='The OpenSearch admin.  If this is set, the program will prompt for password too. If not set, use default of admin/admin')
+    general.add_argument('--vector', action='store_true',
+                         help='Create a vector query')
 
     args = parser.parse_args()
 
@@ -237,6 +262,11 @@ if __name__ == "__main__":
     if args.user:
         password = getpass()
         auth = (args.user, password)
+
+    vector_query = False
+    if args.vector:
+        vector_query = True
+    print("vector flag=" + str(vector_query))
 
     base_url = "https://{}:{}/".format(host, port)
     opensearch = OpenSearch(
@@ -256,14 +286,15 @@ if __name__ == "__main__":
     query_model = fasttext.load_model("/workspace/datasets/fasttext/week3_model.bin")
 
     index_name = args.index
-    query_prompt = "\nEnter your query (type 'Exit' to exit or hit ctrl-c):"
-    print(query_prompt)
-    for line in fileinput.input():
+    query_prompt = "\nEnter your query (type 'Exit' to exit or hit ctrl-c): "
+    #print(query_prompt)
+    while True:
+        line = input(query_prompt)
         query = line.rstrip()
         if query == "Exit":
             break
-        search(client=opensearch, user_query=query, model=query_model, index=index_name)
+        search(client=opensearch, user_query=query, model=query_model, index=index_name, vector=vector_query)
 
-        print(query_prompt)
+        #print(query_prompt)
 
     
